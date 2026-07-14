@@ -15,12 +15,13 @@ ENV PORT=3000
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-# Prisma 运行时：schema + CLI（种子数据已在 entrypoint 内联，无需 tsx）
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
+# 在 runner 中安装全部依赖（包含 prisma CLI 和 @prisma/client 引擎）
+RUN corepack enable && pnpm install --frozen-lockfile
 EXPOSE 3000
 CMD ["/bin/sh", "./docker-entrypoint.sh"]
