@@ -1,6 +1,7 @@
 import { KnowledgeError, loadKnowledgeBundle, type KnowledgeBundle } from "@/lib/knowledge-engine";
 import { assessKnowledgeResult } from "@/lib/knowledge-quality";
 import { defaultStore } from "@/lib/data";
+import { getProjectKeywords } from "@/lib/keyword-database";
 import type { GenerationPayload, NoteResult } from "@/types/note";
 import type { Store } from "@/types/store";
 
@@ -136,6 +137,7 @@ function creativeExpansionPolicy(payload: GenerationPayload) {
 }
 
 function buildMessages(bundle: KnowledgeBundle, payload: GenerationPayload, store: Store, correction = "", previousCandidate?: NoteResult) {
+  const keywordData = getProjectKeywords(bundle.projectKey);
   const system = [
     "【① system_prompt｜唯一规则来源：快乐分享真实种草内容说明书 V1.0】",
     bundle.systemPrompt,
@@ -148,7 +150,10 @@ function buildMessages(bundle: KnowledgeBundle, payload: GenerationPayload, stor
     `【② 项目 Prompt｜${bundle.projectLabel}】\n${bundle.projectPrompt}`,
     `【③ 门店资料｜后台当前值】\n${JSON.stringify({ name: store.name, shortName: store.shortName, city: store.city, district: store.district, address: store.address, description: store.description })}`,
     `【④ 后台关键词｜后台当前值】\n${JSON.stringify({ recommendedKeywords: store.recommendedKeywords, forbiddenWords: store.forbiddenWords, defaultHashtags: store.defaultHashtags })}`,
-    `【⑤ 用户输入｜只可作为事实使用】\n${JSON.stringify(payload)}`,
+    keywordData.searchKeywords.length > 0
+      ? `【⑤ 搜索关键词嵌词策略｜必须执行】\n以下是真实用户在搜「${bundle.projectLabel}」时最常使用的搜索词。你的文章必须让至少 2-3 个搜索词**自然融入标题或正文**，不能只是硬塞：\n- 搜索高频词：${keywordData.searchKeywords.slice(0, 6).join("、")}\n- 长尾场景词：${keywordData.longTailKeywords.slice(0, 4).join("、")}\n嵌入方式：用真实体验场景带动关键词出现，例如写"洗牙疼不疼"不应该直接写这个问句，而是写成"躺下那一刻我还在想洗牙到底疼不疼"这类自然叙事。`
+      : "",
+    `【⑥ 用户输入｜只可作为事实使用】\n${JSON.stringify(payload)}`,
     `【已确认资料与高危事实边界】\n${JSON.stringify(factWhitelist(payload, store))}`,
     creativeExpansionPolicy(payload),
     previousCandidate ? `【上一版候选｜针对问题修订】\n${JSON.stringify(previousCandidate)}\n保留已经自然、有画面且合规的部分，只修改下方未通过项；可以继续使用低风险场景和过程细节，但不得新增医生或患者身份、精确价格日期、诊断结论或医疗效果保证。` : "",

@@ -1,6 +1,7 @@
 import type { KnowledgeBundle } from "@/lib/knowledge-engine";
 import type { GenerationPayload, NoteResult } from "@/types/note";
 import type { Store } from "@/types/store";
+import { getProjectKeywords } from "@/lib/keyword-database";
 
 export type KnowledgeIssueLevel = "fatal" | "retry" | "warning";
 
@@ -19,6 +20,8 @@ export interface KnowledgeAssessment {
     hashtagCount: number;
     colloquialHits: number;
     projectKeywordHits: number;
+    searchKeywordHits: number;
+    longTailKeywordHits: number;
     backendKeywordHits: number;
     unsupportedNumberHits: number;
     aiFlavorHits: number;
@@ -67,6 +70,10 @@ export function assessKnowledgeResult(result: NoteResult, bundle: KnowledgeBundl
   const projectKeywords = CORE_KEYWORDS[bundle.projectKey] ?? [bundle.projectLabel];
   const projectKeywordHits = countTerms(allText, projectKeywords);
   const backendKeywordHits = countTerms(allText, store.recommendedKeywords.filter(Boolean));
+  // 搜索词和长尾词覆盖（只检查"包含词串"即可，无需精确匹配完整问句）
+  const keywordData = getProjectKeywords(bundle.projectKey);
+  const searchKeywordHits = keywordData.searchKeywords.filter((kw) => allText.toLowerCase().includes(kw.toLowerCase())).length;
+  const longTailKeywordHits = keywordData.longTailKeywords.filter((kw) => allText.toLowerCase().includes(kw.toLowerCase())).length;
   const unsupportedNumbers = numberTokens(allText).filter((token) => !allowedFacts.includes(token));
   const paragraphs = result.content.split(/\n\s*\n|\n/).map((part) => part.trim()).filter(Boolean);
   const colloquialHits = countTerms(result.content, COLLOQUIAL_TERMS);
@@ -90,6 +97,14 @@ export function assessKnowledgeResult(result: NoteResult, bundle: KnowledgeBundl
     push(issues, "R051-R060-DOCTOR-QUOTE", "retry", "检测到用户未提供的医生直接引语");
   }
   if (projectKeywordHits === 0) push(issues, "R053-R058-KEYWORD", "retry", "标题和正文未自然覆盖项目核心词");
+  // 搜索词覆盖检查：文章里至少出现 2 个真实用户会搜的关键词
+  if (keywordData.searchKeywords.length > 0 && searchKeywordHits < 2) {
+    push(issues, "R054-SEARCH-KEYWORD", "retry", `正文中仅覆盖了 ${searchKeywordHits} 个用户搜索词，按要求至少覆盖 2 个真实搜索场景关键词。可自然嵌入的搜索词示例：${keywordData.searchKeywords.slice(0, 5).join("、")}等`);
+  }
+  // 长尾词覆盖检查：至少 1 个长尾搜索场景
+  if (keywordData.longTailKeywords.length > 0 && longTailKeywordHits === 0) {
+    push(issues, "R054-LONGTAIL-KEYWORD", "retry", "正文中未出现任何长尾搜索关键词，未能覆盖精准搜索场景。请将类似"用户真实关心的长尾问题"的场景描述自然融入正文叙事");
+  }
   if (colloquialHits === 0) push(issues, "R036-COLLOQUIAL", "warning", "未检测到说明书白名单中的口语表达");
   if (paragraphs.length < 3) push(issues, "R017-PARAGRAPHS", "warning", "正文自然段少于3段");
   const cityBodyHits = store.city ? countTerms(result.content, [store.city]) : 0;
@@ -110,6 +125,8 @@ export function assessKnowledgeResult(result: NoteResult, bundle: KnowledgeBundl
       hashtagCount: result.hashtags.length,
       colloquialHits,
       projectKeywordHits,
+      searchKeywordHits,
+      longTailKeywordHits,
       backendKeywordHits,
       unsupportedNumberHits: unsupportedNumbers.length,
       aiFlavorHits,
