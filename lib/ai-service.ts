@@ -2,6 +2,7 @@ import { KnowledgeError, loadKnowledgeBundle, type KnowledgeBundle } from "@/lib
 import { assessKnowledgeResult } from "@/lib/knowledge-quality";
 import { defaultStore } from "@/lib/data";
 import { getProjectKeywords } from "@/lib/keyword-database";
+import { generateStyleConfig, styleConfigToPrompt, getStyleConfigTypes, type StyleConfig } from "@/lib/style-diversifier";
 import type { GenerationPayload, NoteResult } from "@/types/note";
 import type { Store } from "@/types/store";
 
@@ -136,7 +137,7 @@ function creativeExpansionPolicy(payload: GenerationPayload) {
   ].join("\n");
 }
 
-function buildMessages(bundle: KnowledgeBundle, payload: GenerationPayload, store: Store, correction = "", previousCandidate?: NoteResult) {
+function buildMessages(bundle: KnowledgeBundle, payload: GenerationPayload, store: Store, correction = "", previousCandidate?: NoteResult, styleConfig?: StyleConfig) {
   const keywordData = getProjectKeywords(bundle.projectKey);
   const system = [
     "【① system_prompt｜唯一规则来源：快乐分享真实种草内容说明书 V1.0】",
@@ -153,6 +154,7 @@ function buildMessages(bundle: KnowledgeBundle, payload: GenerationPayload, stor
     keywordData.searchKeywords.length > 0
       ? `【⑤ 搜索关键词嵌词策略｜必须执行】\n以下是真实用户在搜「${bundle.projectLabel}」时最常使用的搜索词。你的文章必须让至少 2-3 个搜索词**自然融入标题或正文**，不能只是硬塞：\n- 搜索高频词：${keywordData.searchKeywords.slice(0, 6).join("、")}\n- 长尾场景词：${keywordData.longTailKeywords.slice(0, 4).join("、")}\n嵌入方式：用真实体验场景带动关键词出现，例如写"洗牙疼不疼"不应该直接写这个问句，而是写成"躺下那一刻我还在想洗牙到底疼不疼"这类自然叙事。`
       : "",
+    styleConfig ? styleConfigToPrompt(styleConfig) : "",
     `【⑥ 用户输入｜只可作为事实使用】\n${JSON.stringify(payload)}`,
     `【已确认资料与高危事实边界】\n${JSON.stringify(factWhitelist(payload, store))}`,
     creativeExpansionPolicy(payload),
@@ -207,7 +209,7 @@ async function requestModel(messages: Array<{ role: string; content: string }>, 
 
 async function callModel(messages: Array<{ role: string; content: string }>) {
   try {
-    return normalizeCandidate(JSON.parse(await requestModel(messages, 0.75)));
+    return normalizeCandidate(JSON.parse(await requestModel(messages, 0.9)));
   } catch (error) {
     if (error instanceof AiGenerationError) throw error;
     throw new AiGenerationError("真实AI返回的内容无法解析，请稍后重试。", 502);
@@ -256,12 +258,16 @@ export async function generateNote(input: GenerationPayload, store: Store = defa
     throw error;
   }
 
+  // 生成本次专属的风格配置（基于 sessionId 确保同一会话内风格一致）
+  const styleConfig = generateStyleConfig(payload.sessionId || undefined);
+
   let correction = "";
   let lastIssueCodes = "";
   let lastIssueDetails = "";
   let previousCandidate: NoteResult | undefined;
+  let currentStyleConfig = styleConfig;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const candidate = await callModel(buildMessages(bundle, payload, store, correction, previousCandidate));
+    const candidate = await callModel(buildMessages(bundle, payload, store, correction, previousCandidate, currentStyleConfig));
     const assessment = assessKnowledgeResult(candidate, bundle, payload, store);
     const fatal = assessment.blockingIssues.find((issue) => issue.level === "fatal");
     if (fatal) throw new AiGenerationError(`生成内容未通过医疗合规检查（${fatal.code}），请补充真实信息后重试。`, 422);
@@ -270,6 +276,9 @@ export async function generateNote(input: GenerationPayload, store: Store = defa
       lastIssueDetails = assessment.blockingIssues.map((issue) => issue.message).join("；");
       correction = assessment.blockingIssues.map((issue) => `${issue.code}：${issue.message}`).join("\n");
       previousCandidate = candidate;
+      // 重试时换一种风格配置，避免同样的结构再次失败
+      const previousTypes = getStyleConfigTypes(currentStyleConfig);
+      currentStyleConfig = generateStyleConfig(undefined, previousTypes);
       continue;
     }
     const verification = await verifyHighRiskSafety(bundle, candidate, payload, store);
