@@ -1,0 +1,4 @@
+import { NextRequest, NextResponse } from "next/server";
+import { isAdmin } from "@/lib/admin-auth";
+import { prisma } from "@/lib/prisma";
+export async function GET(request:NextRequest){if(!isAdmin(request))return NextResponse.json({message:"请登录"},{status:401});try{const events=await prisma.analyticsEvent.groupBy({by:["eventName"],_count:{_all:true}});const map=Object.fromEntries(events.map(v=>[v.eventName,v._count._all]));const unique=await prisma.analyticsEvent.findMany({distinct:["sessionId"],select:{sessionId:true}});return NextResponse.json({stats:{views:map.page_view||0,unique:unique.length,starts:map.start_click||0,submits:map.experience_submitted||0,generations:map.generate_success||0,copies:(map.copy_all||0)+(map.copy_title||0)+(map.copy_content||0),publishes:map.publish_guide_view||0}})}catch{return NextResponse.json({stats:{views:0,unique:0,starts:0,submits:0,generations:0,copies:0,publishes:0}})}}

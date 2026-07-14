@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Store {
+  id String @id
+  name String
+  shortName String
+  logo String?
+  city String
+  district String
+  address String
+  description String
+  recommendedKeywords String @default("[]")
+  forbiddenWords String @default("[]")
+  defaultHashtags String @default("[]")
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  projects Project[]
+  campaigns Campaign[]
+  qrCodes QrCode[]
+  generations Generation[]
+  @@index([city, district])
+}
+model Project {
+  id String @id
+  storeId String
+  name String
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store Store @relation(fields:[storeId],references:[id])
+  qrCodes QrCode[]
+  generations Generation[]
+  @@index([storeId, enabled])
+}
+model Campaign {
+  id String @id
+  storeId String
+  name String
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store Store @relation(fields:[storeId],references:[id])
+  qrCodes QrCode[]
+  @@index([storeId, enabled])
+}
+model QrCode {
+  id String @id @default(cuid())
+  storeId String
+  campaignId String?
+  projectId String?
+  channelId String
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store Store @relation(fields:[storeId],references:[id])
+  campaign Campaign? @relation(fields:[campaignId],references:[id])
+  project Project? @relation(fields:[projectId],references:[id])
+  generations Generation[]
+  @@index([storeId, channelId])
+}
+model Generation {
+  id String @id @default(cuid())
+  storeId String
+  qrCodeId String?
+  projectId String
+  sessionId String
+  style String
+  inputJson String
+  titlesJson String
+  content String
+  hashtagsJson String
+  copied Boolean @default(false)
+  publishViewed Boolean @default(false)
+  success Boolean @default(true)
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store Store @relation(fields:[storeId],references:[id])
+  qrCode QrCode? @relation(fields:[qrCodeId],references:[id])
+  project Project @relation(fields:[projectId],references:[id])
+  @@index([storeId, createdAt])
+  @@index([sessionId])
+}
+model AnalyticsEvent {
+  id String @id @default(cuid())
+  eventName String
+  storeId String?
+  campaignId String?
+  channelId String?
+  projectId String?
+  sessionId String
+  ipHash String?
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([eventName, createdAt])
+  @@index([sessionId])
+}
+model AdminUser {
+  id String @id @default(cuid())
+  username String @unique
+  passwordHash String
+  enabled Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

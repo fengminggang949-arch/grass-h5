@@ -1,0 +1,2 @@
+import { MobileShell, PageHeader } from "@/components/mobile-shell";
+export default function TermsPage(){return <MobileShell><div className="page no-dock legal"><PageHeader backHref="/"/><h1>用户协议</h1><p className="sub">更新日期：2026年7月13日</p><h2>1. 真实使用</h2><p>你提交的内容必须基于本人真实到店和消费体验。禁止虚构消费、治疗经历、价格、效果、医生资质或他人体验，也不得使用本系统制作虚假评价。</p><h2>2. AI仅提供辅助</h2><p>AI生成内容可能不准确、不完整或不符合你的实际情况。你必须自行检查和修改，并自行决定是否发布。</p><h2>3. 禁止用途</h2><p>禁止将本系统用于虚假宣传、违法营销、误导医疗宣传、侵犯他人隐私、诋毁竞争对手或其他违反法律和平台规则的行为。</p><h2>4. 发布责任</h2><p>本系统不会自动发布到小红书或其他平台。你对自行复制、修改和发布的最终内容承担责任，并应遵守相关法律与平台规则。</p></div></MobileShell>}
