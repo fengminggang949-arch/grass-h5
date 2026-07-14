@@ -10,7 +10,6 @@ COPY . .
 RUN corepack enable && pnpm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production
 ENV PORT=3000
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
@@ -21,7 +20,8 @@ COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
-# 在 runner 中安装全部依赖（包含 prisma CLI 和 @prisma/client 引擎）
+# 先安装全部依赖（包含 prisma CLI），再设置生产环境
 RUN corepack enable && pnpm install --frozen-lockfile
+ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["/bin/sh", "./docker-entrypoint.sh"]
