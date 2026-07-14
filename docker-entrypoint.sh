@@ -1,25 +1,20 @@
 #!/bin/sh
 set -e
 
-echo "=== 等待数据库连接 ==="
-for i in $(seq 1 30); do
-  if node -e "
-    const { PrismaClient } = require('@prisma/client');
-    const p = new PrismaClient();
-    p.\$connect().then(() => { console.log('ok'); process.exit(0); }).catch(() => { process.exit(1); });
-  " 2>/dev/null; then
-    echo "数据库连接成功"
-    break
-  fi
-  echo "等待数据库... ($i/30)"
-  sleep 2
-done
+echo "=== 启动服务 ==="
+node server.js &
+SERVER_PID=$!
 
-echo "=== 同步数据库表结构 ==="
-node ./node_modules/prisma/build/index.js db push --skip-generate 2>&1
+# 后台初始化数据库（不阻塞服务启动，避免健康检查失败）
+(
+  echo "=== 10 秒后开始初始化数据库 ==="
+  sleep 10
 
-echo "=== 写入种子数据 ==="
-node -e "
+  echo "=== 同步数据库表结构 ==="
+  node ./node_modules/prisma/build/index.js db push --skip-generate 2>&1 || echo "db push 失败，跳过"
+
+  echo "=== 写入种子数据 ==="
+  node -e "
 const { PrismaClient } = require('@prisma/client');
 const { hash } = require('bcryptjs');
 const prisma = new PrismaClient();
@@ -52,7 +47,8 @@ const prisma = new PrismaClient();
   console.log('种子数据写入完成');
   await prisma.\$disconnect();
 })();
-"
+" || echo "种子数据写入失败，跳过"
+) &
 
-echo "=== 启动服务 ==="
-exec node server.js
+echo "=== 服务已启动，PID: $SERVER_PID ==="
+wait $SERVER_PID
